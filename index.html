@@ -885,6 +885,25 @@
                     Perform Bulk Lookup
                     <span id="twilioBulkLoading" style="display: none;" class="loading"></span>
                 </button>
+
+                <div id="twilioBulkResults" style="margin-top: 20px; display: none;">
+                    <div class="alert alert-success">
+                        <h4 style="margin-bottom: 10px;">📊 Bulk Lookup Results</h4>
+                        <table id="twilioBulkTable" class="styled-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Phone Number</th>
+                                    <th>Type</th>
+                                    <th>Carrier</th>
+                                    <th>Country</th>
+                                    <th>Valid</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="twilioBulkBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1828,8 +1847,28 @@
                 loading.style.display = 'none';
                 showNotification(`✅ Completed lookup for ${results.length} numbers`);
 
-                // You can extend this to display results in a table or export them
-                console.log('Twilio bulk lookup results:', results);
+                // Render results in the bulk results table
+                const container = document.getElementById('twilioBulkResults');
+                const tbody = document.getElementById('twilioBulkBody');
+                tbody.innerHTML = '';
+
+                results.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const typeBadge = getTypeBadge(item.type);
+                    const statusText = item.valid ? '✅ OK' : '❌ Invalid';
+
+                    tr.innerHTML = `
+                        <td>${item.phone || item.number || ''}</td>
+                        <td>${typeBadge}</td>
+                        <td>${item.carrier || 'Unknown'}</td>
+                        <td>${item.country || 'Unknown'}</td>
+                        <td>${typeof item.valid === 'boolean' ? (item.valid ? 'Yes' : 'No') : 'Yes'}</td>
+                        <td>${item.error ? `<span style="color: red;">${item.error}</span>` : statusText}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                container.style.display = 'block';
             } catch (error) {
                 loading.style.display = 'none';
                 showNotification('Unable to look up numbers right now, please try again later.', 'error');
