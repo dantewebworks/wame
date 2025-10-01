@@ -1218,11 +1218,27 @@
             return hasPlus ? '+' + digits : digits;
         }
 
-        // Format phone number for display
+        // Format phone number for Twilio API (normalize US/CA local numbers)
         function formatPhoneForAPI(phone) {
             const cleaned = cleanPhoneNumber(phone);
-            // Ensure it starts with + for Twilio API
-            return cleaned.startsWith('+') ? cleaned : '+' + cleaned;
+            if (!cleaned) return '';
+
+            // If already in E.164 format, use as-is
+            if (cleaned.startsWith('+')) return cleaned;
+
+            // Only digits at this point; normalize common US/CA cases
+            // 10 digits -> assume US/CA and prefix +1
+            if (/^\d{10}$/.test(cleaned)) {
+                return '+1' + cleaned;
+            }
+
+            // 11 digits starting with 1 -> add +
+            if (/^1\d{10}$/.test(cleaned)) {
+                return '+' + cleaned;
+            }
+
+            // Fallback: prefix + and pass through (for other countries where CSV already includes country code digits)
+            return '+' + cleaned;
         }
 
         // ============================================
