@@ -4,6 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#25D366">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/icon-192.svg">
+    <link rel="apple-touch-icon" href="/icons/icon-512.svg">
     <title>WhatsApp Link Generator Pro - With Twilio Lookup</title>
     <style>
         * {
@@ -2233,6 +2237,15 @@
         // Get timestamp for filenames
         function getTimestamp() {
             return new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        }
+
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(() => console.log('Service Worker registered'))
+                    .catch(err => console.error('SW registration failed:', err));
+            });
         }
     </script>
 </body>
