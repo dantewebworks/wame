@@ -1,0 +1,12 @@
+{
+  "name": "wame",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "twilio": "^4.20.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

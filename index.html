@@ -1243,12 +1243,6 @@
                 return;
             }
 
-            if (!twilioCredentials.sid || !twilioCredentials.token) {
-                alert('Please configure your Twilio credentials in Settings first');
-                switchTab('settings');
-                return;
-            }
-
             const cleanPhone = phone.replace(/\+/g, '');
             const link = `https://wa.me/${cleanPhone}`;
             
@@ -1299,38 +1293,31 @@
         
         // Perform Twilio lookup for a single number
         async function twilioLookup(phoneNumber) {
-            if (!twilioCredentials.sid || !twilioCredentials.token) {
-                return null;
-            }
-
             try {
-                const auth = btoa(`${twilioCredentials.sid}:${twilioCredentials.token}`);
-                const response = await fetch(
-                    `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(phoneNumber)}?Fields=line_type_intelligence,carrier`,
-                    {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Basic ${auth}`,
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
+                const response = await fetch('/api/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ numbers: [formatPhoneForAPI(phoneNumber)] })
+                });
 
                 if (!response.ok) {
-                    console.error('Twilio API error:', response.status);
                     return null;
                 }
 
                 const data = await response.json();
+                const item = Array.isArray(data.results) ? data.results[0] : null;
+                if (!item || item.error) {
+                    return null;
+                }
+
                 return {
-                    type: data.line_type_intelligence?.type || 'unknown',
-                    carrier: data.carrier?.name || 'Unknown',
-                    country: data.country_code || 'Unknown',
-                    valid: data.valid || false
+                    type: item.type || 'unknown',
+                    carrier: item.carrier || 'Unknown',
+                    country: item.country || 'Unknown',
+                    valid: typeof item.valid === 'boolean' ? item.valid : true
                 };
             } catch (error) {
-                console.error('Twilio lookup error:', error);
-                // Return null instead of throwing to allow graceful degradation
+                console.error('Lookup via API error:', error);
                 return null;
             }
         }
@@ -1342,12 +1329,6 @@
 
             if (!phone || !/^\+?\d+$/.test(phone)) {
                 alert('Please enter a valid phone number');
-                return;
-            }
-
-            if (!twilioCredentials.sid || !twilioCredentials.token) {
-                alert('Please configure your Twilio credentials in Settings first');
-                switchTab('settings');
                 return;
             }
 
@@ -1372,11 +1353,11 @@
                     resultDiv.style.display = 'block';
                     showNotification('✅ Lookup successful');
                 } else {
-                    showNotification('❌ Lookup failed. Check your credentials.', 'error');
+                    showNotification('Unable to look up numbers right now, please try again later.', 'error');
                 }
             } catch (error) {
                 console.error('Lookup error:', error);
-                showNotification('❌ Error performing lookup', 'error');
+                showNotification('Unable to look up numbers right now, please try again later.', 'error');
             } finally {
                 loading.style.display = 'none';
             }
@@ -1384,11 +1365,6 @@
 
         // Test Twilio connection
         async function testTwilioConnection() {
-            if (!twilioCredentials.sid || !twilioCredentials.token) {
-                alert('Please enter your Twilio credentials first');
-                return;
-            }
-
             showNotification('Testing connection...');
             
             try {
@@ -1397,10 +1373,10 @@
                 if (result !== null) {
                     showNotification('✅ Connection successful!');
                 } else {
-                    showNotification('❌ Connection failed. Check your credentials.', 'error');
+                    showNotification('Unable to look up numbers right now, please try again later.', 'error');
                 }
             } catch (error) {
-                showNotification('❌ Connection error. Check your credentials.', 'error');
+                showNotification('Unable to look up numbers right now, please try again later.', 'error');
             }
         }
 
@@ -1801,12 +1777,6 @@
 
         // Bulk Twilio lookup
         async function twilioBulkLookup() {
-            if (!twilioCredentials.sid || !twilioCredentials.token) {
-                alert('Please configure your Twilio credentials in Settings first');
-                switchTab('settings');
-                return;
-            }
-
             if (!twilioCsvData || twilioCsvData.length === 0) {
                 alert('Please upload a CSV file first');
                 return;
@@ -1826,23 +1796,44 @@
 
             showNotification(`Processing ${twilioCsvData.length} phone numbers...`);
 
-            const results = [];
+            // Gather numbers and perform a single batched API lookup
+            const numbers = [];
             for (const row of twilioCsvData) {
                 const phone = cleanPhoneNumber(row[phoneColumn]);
                 if (phone && /^\+?\d+$/.test(phone)) {
-                    const twilioData = await twilioLookup(formatPhoneForAPI(phone));
-                    results.push({
-                        phone: phone,
-                        ...twilioData
-                    });
+                    numbers.push(formatPhoneForAPI(phone));
                 }
             }
 
-            loading.style.display = 'none';
-            showNotification(`✅ Completed lookup for ${results.length} numbers`);
+            try {
+                const response = await fetch('/api/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ numbers })
+                });
 
-            // You can extend this to display results in a table or export them
-            console.log('Twilio bulk lookup results:', results);
+                if (!response.ok) {
+                    throw new Error('lookup_failed');
+                }
+
+                const data = await response.json();
+                const results = (data.results || []).map(item => ({
+                    phone: item.number || '',
+                    type: item.type || 'unknown',
+                    carrier: item.carrier || 'Unknown',
+                    country: item.country || 'Unknown',
+                    valid: typeof item.valid === 'boolean' ? item.valid : true
+                }));
+
+                loading.style.display = 'none';
+                showNotification(`✅ Completed lookup for ${results.length} numbers`);
+
+                // You can extend this to display results in a table or export them
+                console.log('Twilio bulk lookup results:', results);
+            } catch (error) {
+                loading.style.display = 'none';
+                showNotification('Unable to look up numbers right now, please try again later.', 'error');
+            }
         }
 
         // ============================================
