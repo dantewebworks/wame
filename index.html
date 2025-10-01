@@ -1002,6 +1002,19 @@
                 </div>
             </div>
 
+            <!-- Data Export / Import -->
+            <div class="credentials-box" style="margin-top: 20px;">
+                <h3>📦 Data Export / Import</h3>
+                <div class="alert alert-info">
+                    Export includes your history and Twilio credentials. Handle the file securely.
+                </div>
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-secondary btn-small" onclick="exportAppData()">Export Data</button>
+                    <button class="btn btn-secondary btn-small" onclick="document.getElementById('importFileInput').click()">Import Data</button>
+                    <input id="importFileInput" type="file" accept="application/json,.json" style="display:none" onchange="importAppDataFromFile(event)">
+                </div>
+            </div>
+
             <div class="alert alert-info" style="margin-top: 20px;">
                 <h4>ℹ️ How to get Twilio credentials:</h4>
                 <ol style="margin-top: 10px; padding-left: 20px;">
@@ -1034,6 +1047,7 @@
             token: ''
         };
         let twilioCsvData = [];
+        const SYNC_KEY = 'global'; // Cloud sync key for shared history
 
         // Load saved data on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -1041,6 +1055,10 @@
             loadCredentials();
             updateHistoryStats();
             displayHistory();
+
+            // Load cloud history (if configured) to keep data consistent across devices
+            // Non-blocking; falls back silently if server storage is not configured
+            loadRemoteHistory();
 
             // Setup event listeners
             document.getElementById('phoneNumber').addEventListener('keypress', function(e) {
@@ -1079,15 +1097,51 @@
             }
         }
 
-        // Save history to localStorage
+        // Save history to localStorage (and cloud)
         function saveHistory() {
             try {
                 localStorage.setItem('whatsappHistory', JSON.stringify(history));
                 updateHistoryStats();
                 showNotification('✅ Saved to history');
+                // Attempt cloud sync (best-effort)
+                saveHistoryRemote();
             } catch (e) {
                 console.error('Error saving history:', e);
                 showNotification('❌ Error saving to history', 'error');
+            }
+        }
+
+        // Load history from cloud storage
+        async function loadRemoteHistory() {
+            try {
+                const res = await fetch(`/api/data?key=${encodeURIComponent(SYNC_KEY)}`);
+                if (!res.ok) return;
+                const payload = await res.json();
+                const cloudData = payload && payload.data;
+                if (Array.isArray(cloudData) && cloudData.length > 0) {
+                    history = cloudData;
+                    localStorage.setItem('whatsappHistory', JSON.stringify(history));
+                    displayHistory();
+                    updateHistoryStats();
+                    showNotification('☁️ Cloud history loaded');
+                }
+            } catch (err) {
+                console.warn('Cloud history load failed:', err);
+            }
+        }
+
+        // Save history to cloud storage
+        async function saveHistoryRemote() {
+            try {
+                await fetch('/api/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: SYNC_KEY, data: history })
+                });
+                // Optional: show success notification; keep subtle to avoid noise
+                // showNotification('☁️ Cloud sync complete');
+            } catch (err) {
+                console.warn('Cloud history save failed:', err);
             }
         }
 
@@ -2010,6 +2064,78 @@
             });
             
             downloadFile(csvContent, `whatsapp_history_${getTimestamp()}.csv`, 'text/csv');
+        }
+
+        // Export full app data (history + credentials) as JSON
+        function exportAppData() {
+            try {
+                const payload = {
+                    version: 1,
+                    exportedAt: new Date().toISOString(),
+                    history: Array.isArray(history) ? history : [],
+                    twilioCredentials: {
+                        sid: twilioCredentials?.sid || '',
+                        token: twilioCredentials?.token || ''
+                    }
+                };
+                const json = JSON.stringify(payload, null, 2);
+                downloadFile(json, `wame_data_${getTimestamp()}.json`, 'application/json');
+                showNotification('✅ Data exported');
+            } catch (e) {
+                console.error('Export error:', e);
+                showNotification('❌ Error exporting data', 'error');
+            }
+        }
+
+        // Import app data from JSON
+        function importAppDataFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const payload = JSON.parse(e.target.result);
+                    const importedHistory = Array.isArray(payload?.history) ? payload.history : null;
+                    const importedCreds = payload?.twilioCredentials && typeof payload.twilioCredentials === 'object' ? payload.twilioCredentials : null;
+
+                    const changed = [];
+
+                    if (importedHistory) {
+                        history = importedHistory;
+                        localStorage.setItem('whatsappHistory', JSON.stringify(history));
+                        displayHistory();
+                        updateHistoryStats();
+                        changed.push('history');
+                    }
+
+                    if (importedCreds) {
+                        twilioCredentials = {
+                            sid: importedCreds.sid || '',
+                            token: importedCreds.token || ''
+                        };
+                        localStorage.setItem('twilioCredentials', JSON.stringify(twilioCredentials));
+                        document.getElementById('twilioSid').value = twilioCredentials.sid || '';
+                        document.getElementById('twilioToken').value = twilioCredentials.token || '';
+                        changed.push('credentials');
+                    }
+
+                    // Reset input
+                    document.getElementById('importFileInput').value = '';
+
+                    if (changed.length > 0) {
+                        showNotification(`✅ Imported ${changed.join(' & ')}`);
+                        // Best effort: sync imported history to cloud
+                        saveHistoryRemote();
+                    } else {
+                        showNotification('⚠️ No importable data found', 'error');
+                    }
+                } catch (err) {
+                    console.error('Import error:', err);
+                    showNotification('❌ Invalid import file', 'error');
+                }
+            };
+            reader.readAsText(file);
         }
 
         // Download CSV results
